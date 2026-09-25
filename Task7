@@ -1,0 +1,162 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include "DHT.h"
+
+#define WIFI_SSID "Fariha Lubaba"
+#define WIFI_PASSWORD "12345678"
+
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define WATER_SENSOR_PIN 34
+const int WATER_THRESHOLD = 500;
+
+DHT dht(DHTPIN, DHTTYPE);
+WebServer server(80);
+
+float temperature = 0.0;
+float humidity = 0.0;
+int rawWaterLevel = 0;
+float waterPercentage = 0.0;
+bool waterDetected = false;
+
+const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 Local Sensor Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+    header { margin-top: 20px; text-align: center; }
+    header h1 { font-size: 2rem; color: #38bdf8; margin-bottom: 5px; }
+    header p { color: #94a3b8; font-size: 0.95rem; }
+    .status-badge { background: #1e293b; border: 1px solid #334155; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; color: #4ade80; display: inline-block; margin-top: 10px; }
+    .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; width: 100%; max-width: 900px; margin-top: 30px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 25px; text-align: center; transition: transform 0.2s, border-color 0.2s; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+    .card:hover { transform: translateY(-5px); border-color: #38bdf8; }
+    .card .icon { font-size: 2.5rem; margin-bottom: 10px; }
+    .card .label { font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .card .value { font-size: 2.5rem; font-weight: bold; margin: 10px 0; color: #f8fafc; }
+    .card .unit { font-size: 1.2rem; color: #94a3b8; }
+    .alert-card { grid-column: 1 / -1; background: #1e293b; border: 1px solid #334155; }
+    .alert-box { padding: 15px; border-radius: 10px; font-weight: bold; text-align: center; }
+    .alert-dry { background: rgba(74, 222, 128, 0.1); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+    .alert-wet { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.4); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    footer { margin-top: auto; padding: 20px 0; color: #64748b; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ESP32 Local Server Dashboard</h1>
+    <p>Live Real-Time Sensor Telemetry</p>
+    <div class="status-badge">System Online</div>
+  </header>
+  <div class="grid-container">
+    <div class="card">
+      <div class="label">Temperature</div>
+      <div class="value"><span id="temp">--</span><span class="unit"> C</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Humidity</div>
+      <div class="value"><span id="humidity">--</span><span class="unit"> %</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Water Depth Level</div>
+      <div class="value"><span id="water">--</span><span class="unit"> %</span></div>
+    </div>
+    <div class="card alert-card">
+      <div id="alertBox" class="alert-box alert-dry">Checking Water Sensor Status...</div>
+    </div>
+  </div>
+  <footer>ESP32 Local Web Server | Hackathon Starter Kit</footer>
+  <script>
+    function updateSensorData() {
+      fetch('/api/data')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('temp').innerText = data.temperature.toFixed(1);
+          document.getElementById('humidity').innerText = data.humidity.toFixed(1);
+          document.getElementById('water').innerText = data.water_percentage.toFixed(1);
+          const alertBox = document.getElementById('alertBox');
+          if (data.water_detected) {
+            alertBox.innerText = 'WARNING: WATER DETECTED!';
+            alertBox.className = 'alert-box alert-wet';
+          } else {
+            alertBox.innerText = 'NORMAL: DRY ENVIRONMENT';
+            alertBox.className = 'alert-box alert-dry';
+          }
+        })
+        .catch(err => console.error("Error fetching data:", err));
+    }
+    setInterval(updateSensorData, 2000);
+    updateSensorData();
+  </script>
+</body>
+</html>
+)rawliteral";
+
+void readSensors() {
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  if (!isnan(t)) temperature = t;
+  if (!isnan(h)) humidity = h;
+
+  rawWaterLevel = analogRead(WATER_SENSOR_PIN);
+  waterPercentage = (rawWaterLevel / 4095.0) * 100.0;
+  waterDetected = (rawWaterLevel > WATER_THRESHOLD);
+}
+
+void handleRoot() {
+  readSensors();
+  server.send(200, "text/html", HTML_DASHBOARD);
+}
+
+void handleApiData() {
+  readSensors();
+  String json = "{";
+  json += "\"temperature\":" + String(temperature, 1) + ",";
+  json += "\"humidity\":" + String(humidity, 1) + ",";
+  json += "\"raw_water\":" + String(rawWaterLevel) + ",";
+  json += "\"water_percentage\":" + String(waterPercentage, 1) + ",";
+  json += "\"water_detected\":" + String(waterDetected ? "true" : "false");
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
+void handleNotFound() {
+  server.send(404, "text/plain", "404: Route Not Found");
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("ESP32 Local Web Server (DHT11 + Water Sensor)");
+
+  dht.begin();
+  pinMode(WATER_SENSOR_PIN, INPUT);
+
+  Serial.print("Connecting to Wi-Fi: ");
+  Serial.println(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("Wi-Fi Connected!");
+  Serial.print("Open in browser: http://");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.on("/api/data", handleApiData);
+  server.onNotFound(handleNotFound);
+  server.begin();
+  Serial.println("Server started");
+}
+
+void loop() {
+  server.handleClient();
+}
