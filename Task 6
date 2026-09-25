@@ -1,0 +1,78 @@
+#include <DHT.h>
+
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define LED_PIN 2
+
+DHT dht(DHTPIN, DHTTYPE);
+
+unsigned long previousRead = 0;
+unsigned long previousBlink = 0;
+const unsigned long readInterval = 3500;
+unsigned long blinkInterval = 1000;
+
+float humidity = 0;
+float temperature = 0;
+bool alert = false;
+bool ledState = LOW;
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  Serial.println("DHT11 Sensor Started");
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousRead >= readInterval) {
+    previousRead = currentMillis;
+    humidity = dht.readHumidity();
+    temperature = dht.readTemperature();
+
+    if (isnan(humidity) || isnan(temperature)) {
+      Serial.println("No DHT11 Detected!");
+      alert = false;
+      digitalWrite(LED_PIN, LOW);
+      return;
+    }
+
+    Serial.print("Temperature: ");
+    Serial.print(temperature);
+    Serial.println(" C");
+    Serial.print("Humidity: ");
+    Serial.print(humidity);
+    Serial.println(" %");
+    Serial.println("---------------------");
+
+    if (humidity > 80 && temperature > 30) {
+      alert = true;
+      blinkInterval = 1000;
+    }
+    else if (humidity > 70 && temperature > 30) {
+      alert = true;
+      blinkInterval = 500;
+      Serial.println("Warning!");
+    }
+    else if (humidity < 70 && temperature < 30) {
+      alert = false;
+      digitalWrite(LED_PIN, LOW);
+      Serial.println("All Good");
+    }
+    else {
+      alert = false;
+      digitalWrite(LED_PIN, LOW);
+    }
+  }
+
+  // blink without delay()
+  if (alert) {
+    if (currentMillis - previousBlink >= blinkInterval) {
+      previousBlink = currentMillis;
+      ledState = !ledState;
+      digitalWrite(LED_PIN, ledState);
+    }
+  }
+}
