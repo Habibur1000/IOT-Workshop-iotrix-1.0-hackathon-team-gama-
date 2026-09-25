@@ -1,0 +1,24 @@
+#define SOIL_PIN 34
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  int sensorValue = analogRead(SOIL_PIN);
+  Serial.print("Soil Moisture Value: ");
+  Serial.println(sensorValue);
+
+  // values based on testing our sensor, might differ for others
+  if (sensorValue > 3000) {
+    Serial.println("Soil is DRY");
+  }
+  else if (sensorValue > 1800) {
+    Serial.println("Soil is MOIST");
+  }
+  else {
+    Serial.println("Soil is WET");
+  }
+  Serial.println("-------------------");
+  delay(1000);
+}
