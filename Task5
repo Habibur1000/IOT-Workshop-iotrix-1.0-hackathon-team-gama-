@@ -1,0 +1,26 @@
+#define SOIL_PIN 34
+#define LED_PIN 2
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+}
+void loop() {
+  int sensorValue = analogRead(SOIL_PIN);
+  int moisture = map(sensorValue, 4095, 1500, 0, 100);
+  moisture = constrain(moisture, 0, 100);
+  Serial.print("Moisture: ");
+  Serial.print(moisture);
+  Serial.println("%");
+  if (moisture < 60) {
+    Serial.println("Moisture LOW - LED Blinking");
+    digitalWrite(LED_PIN, HIGH);
+    delay(500);
+    digitalWrite(LED_PIN, LOW);
+    delay(500);
+  }
+  else {
+    Serial.println("Moisture OK - LED OFF");
+    digitalWrite(LED_PIN, LOW);
+    delay(1000);
+  }
+}
